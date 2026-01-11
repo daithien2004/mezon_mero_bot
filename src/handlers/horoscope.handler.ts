@@ -8,6 +8,15 @@ import {
   Nezon,
 } from '@n0xgg04/nezon';
 
+import {
+  ZODIAC_SIGNS,
+  ZODIAC_SIGNS_DATA,
+  LUCKY_COLORS,
+  LUCKY_NUMBERS,
+  DIRECTIONS,
+  LUCKY_HOURS,
+} from '../data/horoscope.data';
+
 interface ZodiacSign {
   id: string;
   name: string;
@@ -15,49 +24,38 @@ interface ZodiacSign {
   dateRange: string;
 }
 
-const ZODIAC_SIGNS: ZodiacSign[] = [
-  { id: 'aries', name: 'Bạch Dương', symbol: '♈', dateRange: '21/3 - 19/4' },
-  { id: 'taurus', name: 'Kim Ngưu', symbol: '♉', dateRange: '20/4 - 20/5' },
-  { id: 'gemini', name: 'Song Tử', symbol: '♊', dateRange: '21/5 - 20/6' },
-  { id: 'cancer', name: 'Cự Giải', symbol: '♋', dateRange: '21/6 - 22/7' },
-  { id: 'leo', name: 'Sư Tử', symbol: '♌', dateRange: '23/7 - 22/8' },
-  { id: 'virgo', name: 'Xử Nữ', symbol: '♍', dateRange: '23/8 - 22/9' },
-  { id: 'libra', name: 'Thiên Bình', symbol: '♎', dateRange: '23/9 - 22/10' },
-  { id: 'scorpio', name: 'Thiên Yết', symbol: '♏', dateRange: '23/10 - 21/11' },
-  { id: 'sagittarius', name: 'Nhân Mã', symbol: '♐', dateRange: '22/11 - 21/12' },
-  { id: 'capricorn', name: 'Ma Kết', symbol: '♑', dateRange: '22/12 - 19/1' },
-  { id: 'aquarius', name: 'Bảo Bình', symbol: '♒', dateRange: '20/1 - 18/2' },
-  { id: 'pisces', name: 'Song Ngư', symbol: '♓', dateRange: '19/2 - 20/3' },
-];
-
-const LUCKY_COLORS = ['Đỏ', 'Xanh Dương', 'Xanh Lá', 'Vàng', 'Tím', 'Cam', 'Hồng', 'Trắng', 'Đen', 'Xám', 'Vàng Kim', 'Bạc', 'Nâu', 'Xanh Ngọc'];
-const LUCKY_NUMBERS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 22, 69, 88, 99, 15, 27, 33];
-const DIRECTIONS = ['Đông', 'Tây', 'Nam', 'Bắc', 'Đông Bắc', 'Đông Nam', 'Tây Bắc', 'Tây Nam'];
-const LUCKY_HOURS = [
-  '01:00 - 03:00', '03:00 - 05:00', '07:00 - 09:00', 
-  '09:00 - 11:00', '13:00 - 15:00', '15:00 - 17:00', 
-  '19:00 - 21:00', '21:00 - 23:00'
-];
-
-const ADVICES = [
-  'Hãy cẩn thận lời ăn tiếng nói hôm nay.',
-  'Một cơ hội bất ngờ sẽ đến vào buổi chiều.',
-  'Tình cảm thăng hoa, hãy tận hưởng!',
-  'Nên tránh đầu tư mạo hiểm.',
-  'Dành thời gian chăm sóc bản thân nhiều hơn.',
-  'Kiên nhẫn là chìa khóa của thành công.',
-  'Đừng ngại thử thách những điều mới mẻ.',
-  'Một người cũ có thể liên lạc lại với bạn.',
-  'Sức khỏe cần được chú trọng, ngủ sớm nhé.',
-  'Màu sắc may mắn sẽ mang lại vận khí tốt.',
-  'Hôm nay là ngày tốt để bắt đầu kế hoạch mới.',
-  'Hãy lắng nghe trực giác của mình.',
-  'Tránh tranh cãi với đồng nghiệp.',
-  'Một món quà nhỏ sẽ làm bạn vui vẻ.',
-];
-
 @Injectable()
 export class HoroscopeHandler {
+
+  /**
+   * Extract user information from message for personalized horoscope
+   */
+  private extractUserInfo(message: any, mentionIndex: number = -1) {
+    const msgAny = message as any;
+    
+    // Check if we should use mentioned user or message sender
+    let targetUser = null;
+    if (mentionIndex >= 0 && msgAny.mentions && msgAny.mentions[mentionIndex]) {
+      targetUser = msgAny.mentions[mentionIndex];
+    }
+    
+    return {
+      userId: targetUser?.user_id || targetUser?.id || message.senderId || 'unknown',
+      displayName: targetUser?.display_name || targetUser?.username || msgAny.sender?.display_name || msgAny.sender?.username || 'Bạn',
+      username: targetUser?.username || msgAny.sender?.username || 'user',
+      avatar: targetUser?.avatar || msgAny.sender?.avatar || msgAny.sender?.clan_avatar || null,
+      clanId: message.clanId || msgAny.clan_id || 'default',
+      channelId: message.channelId || msgAny.channel_id || 'default',
+    };
+  }
+
+  /**
+   * Create enhanced seed for deterministic horoscope
+   * Format: userId_date_clanId_channelId_signId
+   */
+  private createEnhancedSeed(userId: string, date: string, clanId: string, channelId: string, signId: string): string {
+    return `${userId}_${date}_${clanId}_${channelId}_${signId}`;
+  }
 
   // Seeded Random Helper
   private getSeededRandom(seedStr: string): () => number {
@@ -101,27 +99,46 @@ export class HoroscopeHandler {
       return;
     }
 
+    // Extract user info (context-aware)
+    const userInfo = this.extractUserInfo(message);
+    
     // Daily & User Logic
     const date = new Date();
     date.setHours(date.getHours() + 7);
     const dateString = date.toISOString().split('T')[0];
-    const senderId = message.senderId || 'guest';
     
-    // Seed = Date + SignID + UserID -> Truly unique for each user/day
-    const seed = `${dateString}_${sign.id}_${senderId}`;
+    // Enhanced seed with context (user + date + clan + channel + sign)
+    const seed = this.createEnhancedSeed(
+      userInfo.userId,
+      dateString,
+      userInfo.clanId,
+      userInfo.channelId,
+      sign.id
+    );
     const rng = this.getSeededRandom(seed);
 
-    // Randomize specs
-    const loveScore = Math.floor(rng() * 5) + 1; // 1-5
-    const careerScore = Math.floor(rng() * 5) + 1;
-    const moneyScore = Math.floor(rng() * 5) + 1;
+    // Get sign-specific data
+    const signData = ZODIAC_SIGNS_DATA[sign.id];
+
+    // Randomize specs (deterministic based on seed) with sign bonuses
+    let loveScore = Math.floor(rng() * 5) + 1; // 1-5
+    let careerScore = Math.floor(rng() * 5) + 1;
+    let moneyScore = Math.floor(rng() * 5) + 1;
+    
+    // Apply sign-specific bonuses
+    loveScore = Math.max(1, Math.min(5, loveScore + signData.loveBonus));
+    careerScore = Math.max(1, Math.min(5, careerScore + signData.careerBonus));
+    moneyScore = Math.max(1, Math.min(5, moneyScore + signData.moneyBonus));
+    
     const energyLevel = Math.floor(rng() * 41) + 60; // 60-100% (Make it positive)
     
     const luckyColor = LUCKY_COLORS[Math.floor(rng() * LUCKY_COLORS.length)];
     const luckyNumber = LUCKY_NUMBERS[Math.floor(rng() * LUCKY_NUMBERS.length)];
     const luckyHour = LUCKY_HOURS[Math.floor(rng() * LUCKY_HOURS.length)];
     const luckyDir = DIRECTIONS[Math.floor(rng() * DIRECTIONS.length)];
-    const advice = ADVICES[Math.floor(rng() * ADVICES.length)];
+    
+    // Get sign-specific advice instead of generic
+    const advice = signData.advices[Math.floor(rng() * signData.advices.length)];
     
     // Get a compatible sign (not itself)
     const otherSigns = ZODIAC_SIGNS.filter(s => s.id !== sign.id);
@@ -133,7 +150,11 @@ export class HoroscopeHandler {
 
     const embed = new EmbedBuilder()
       .setTitle(`${sign.symbol} Tử Vi ${sign.name} (${sign.dateRange})`)
-      .setDescription(`**Dự báo cá nhân ngày ${dateString}**\n*Chào bạn, đây là thông điệp riêng dành cho ngày hôm nay của bạn.*`)
+      .setDescription(
+        `**Dự báo cá nhân ngày ${dateString}**\n` +
+        `*Chào ${userInfo.displayName}, đây là thông điệp riêng dành cho ngày hôm nay của bạn.*\n\n` +
+        `**Nguyên tố:** ${signData.element} | **Điểm mạnh:** ${signData.strengths.slice(0, 2).join(', ')}`
+      )
       .addField('💘 Tình cảm', stars(loveScore), true)
       .addField('💼 Sự nghiệp', stars(careerScore), true)
       .addField('💰 Tài lộc', stars(moneyScore), true)
@@ -143,7 +164,12 @@ export class HoroscopeHandler {
       .addField('🍀 May mắn', `Màu: **${luckyColor}** | Số: **${luckyNumber}** | Hướng: **${luckyDir}**`, false)
       .addField('💡 Lời khuyên', advice, false)
       .setColor(color)
-      .setFooter(`Personalized for ${(message as any).username || 'User'}`);
+      .setFooter(`Personalized for ${userInfo.displayName}`);
+    
+    // Add user avatar as thumbnail if available
+    if (userInfo.avatar) {
+      embed.setThumbnail(userInfo.avatar);
+    }
 
     await message.reply(SmartMessage.text('').addEmbed(embed));
   }

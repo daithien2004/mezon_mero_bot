@@ -20,6 +20,36 @@ export class TarotHandler {
 
   // --- Helper Methods ---
 
+  /**
+   * Extract user information from message for personalized tarot readings
+   */
+  private extractUserInfo(message: any, mentionIndex: number = -1) {
+    const msgAny = message as any;
+    
+    // Check if we should use mentioned user or message sender
+    let targetUser = null;
+    if (mentionIndex >= 0 && msgAny.mentions && msgAny.mentions[mentionIndex]) {
+      targetUser = msgAny.mentions[mentionIndex];
+    }
+    
+    return {
+      userId: targetUser?.user_id || targetUser?.id || message.senderId || 'unknown',
+      displayName: targetUser?.display_name || targetUser?.username || msgAny.sender?.display_name || msgAny.sender?.username || 'Bạn',
+      username: targetUser?.username || msgAny.sender?.username || 'user',
+      avatar: targetUser?.avatar || msgAny.sender?.avatar || msgAny.sender?.clan_avatar || null,
+      clanId: message.clanId || msgAny.clan_id || 'default',
+      channelId: message.channelId || msgAny.channel_id || 'default',
+    };
+  }
+
+  /**
+   * Create enhanced seed for deterministic card selection
+   * Format: userId_date_clanId_channelId
+   */
+  private createEnhancedSeed(userId: string, date: string, clanId: string, channelId: string): string {
+    return `${userId}_${date}_${clanId}_${channelId}`;
+  }
+
   private createRNG(seedStr: string) {
     let seed = 0;
     for (let i = 0; i < seedStr.length; i++) {
@@ -76,7 +106,8 @@ export class TarotHandler {
     apiCard: any,
     isReversed: boolean, 
     titlePrefix = '', 
-    showExtra = false
+    showExtra = false,
+    userAvatar: string | null = null
   ): EmbedBuilder {
     const cardId = apiCard.name_short;
     const vietnamese = VIETNAMESE_MEANINGS[cardId];
@@ -99,8 +130,8 @@ export class TarotHandler {
       .setImage(imageUrl)
       .setColor(color)
       .setDescription(
-        `**Từ khóa:** ${vietnamese.keywords.join(', ')}\\n\\n` +
-        `**Ý nghĩa ${status}:**\\n${isReversed ? vietnamese.meaningRev : vietnamese.meaningUp}`
+        `**Từ khóa:** ${vietnamese.keywords.join(', ')}\n\n` +
+        `**Ý nghĩa ${status}:**\n${isReversed ? vietnamese.meaningRev : vietnamese.meaningUp}`
       );
 
     if (showExtra) {
@@ -110,6 +141,11 @@ export class TarotHandler {
         embed.setFooter(extraInfo);
     } else {
         embed.setFooter('Tarot Việt Hóa - Rider Waite (API)');
+    }
+    
+    // Add user avatar as thumbnail if available
+    if (userAvatar) {
+      embed.setThumbnail(userAvatar);
     }
       
     return embed;
@@ -165,21 +201,26 @@ export class TarotHandler {
   // 1. Daily Draw (Default)
   private async handleDaily(message: any) {
     try {
-      let targetUserId = message.senderId;
-      let titlePrefix = 'Thông điệp ngày';
-      
+      // Extract user info (handles mentions automatically)
       const msgAny = message as any;
-      if (msgAny.mentions && msgAny.mentions.length > 0) {
-          targetUserId = msgAny.mentions[0].user_id || msgAny.mentions[0].id;
-          const targetName = msgAny.mentions[0].username || 'người ấy';
-          titlePrefix = `Thông điệp cho ${targetName}`;
-      }
+      const mentionIndex = msgAny.mentions && msgAny.mentions.length > 0 ? 0 : -1;
+      const userInfo = this.extractUserInfo(message, mentionIndex);
+      
+      const titlePrefix = mentionIndex >= 0 
+        ? `Thông điệp cho ${userInfo.displayName}`
+        : 'Thông điệp ngày';
 
       const date = new Date();
       date.setHours(date.getHours() + 7);
       const dateString = date.toISOString().split('T')[0];
 
-      const seedStr = `${targetUserId}_${dateString}`;
+      // Create enhanced seed with context (userId + date + clanId + channelId)
+      const seedStr = this.createEnhancedSeed(
+        userInfo.userId,
+        dateString,
+        userInfo.clanId,
+        userInfo.channelId
+      );
       
       // Get seeded random cards from API
       const cards = await this.tarotApiService.getRandomCards(1, seedStr);
@@ -193,8 +234,8 @@ export class TarotHandler {
       const isReversed = rng() < 0.3;
 
       await message.reply(
-        SmartMessage.text(`🔮 **${titlePrefix} hôm nay (${dateString}):**`)
-          .addEmbed(this.createCardEmbed(card, isReversed, '', true))
+        SmartMessage.text(`🔮 ${titlePrefix} hôm nay (${dateString})`)
+          .addEmbed(this.createCardEmbed(card, isReversed, '', true, userInfo.avatar))
       );
     } catch (error) {
       this.logger.error('Error in handleDaily', error);
@@ -205,6 +246,8 @@ export class TarotHandler {
   // 2. Random One
   private async handleRandomOne (message: any) {
     try {
+      const userInfo = this.extractUserInfo(message);
+      
       const cards = await this.tarotApiService.getRandomCards(1);
       if (cards.length === 0) {
         await message.reply(SmartMessage.text('⚠️ Không thể lấy bài Tarot. Vui lòng thử lại sau.'));
@@ -216,7 +259,7 @@ export class TarotHandler {
 
       await message.reply(
           SmartMessage.text(`🎲 **Lá bài của bạn:**`)
-            .addEmbed(this.createCardEmbed(card, isReversed, '', true))
+            .addEmbed(this.createCardEmbed(card, isReversed, '', true, userInfo.avatar))
         );
     } catch (error) {
       this.logger.error('Error in handleRandomOne', error);
@@ -227,13 +270,30 @@ export class TarotHandler {
   // 3. Complex Spreads
   private async handleSpread(message: any, type: 'time' | 'love' | 'career' | 'choice') {
     try {
-      const cards = await this.tarotApiService.getRandomCards(3);
+      const userInfo = this.extractUserInfo(message);
+      
+      // Create seed based on user + date + spread type
+      const date = new Date();
+      date.setHours(date.getHours() + 7);
+      const dateString = date.toISOString().split('T')[0];
+      
+      const seedStr = this.createEnhancedSeed(
+        userInfo.userId,
+        dateString,
+        userInfo.clanId,
+        `${userInfo.channelId}_${type}`
+      );
+      
+      // Get seeded cards (deterministic)
+      const cards = await this.tarotApiService.getRandomCards(3, seedStr);
       if (cards.length < 3) {
         await message.reply(SmartMessage.text('⚠️ Không thể lấy đủ bài để trải. Vui lòng thử lại sau.'));
         return;
       }
 
-      const spreadCards = cards.map(c => ({ card: c, isReversed: Math.random() < 0.3 }));
+      // Create RNG for reversed cards (deterministic)
+      const rng = this.createRNG(seedStr + '_reverse');
+      const spreadCards = cards.map(c => ({ card: c, isReversed: rng() < 0.3 }));
 
       let title = '';
       let labels: string[] = [];
@@ -256,7 +316,7 @@ export class TarotHandler {
       const msg = SmartMessage.text(`✨ **${title}** ✨`);
       
       for (let i = 0; i < 3; i++) {
-          const embed = this.createCardEmbed(spreadCards[i].card, spreadCards[i].isReversed, `**${i + 1}️⃣ ${labels[i]}:**`, true);
+          const embed = this.createCardEmbed(spreadCards[i].card, spreadCards[i].isReversed, `**${i + 1}️⃣ ${labels[i]}:**`, true, userInfo.avatar);
           msg.addEmbed(embed);
       }
 
@@ -275,14 +335,39 @@ export class TarotHandler {
     }
 
     try {
-      const cards = await this.tarotApiService.getRandomCards(1);
+      const userInfo = this.extractUserInfo(message);
+      
+      // Create seed based on user + date + question
+      const date = new Date();
+      date.setHours(date.getHours() + 7);
+      const dateString = date.toISOString().split('T')[0];
+      
+      // Hash question to create unique but deterministic seed
+      let questionHash = 0;
+      for (let i = 0; i < question.length; i++) {
+        questionHash = ((questionHash << 5) - questionHash) + question.charCodeAt(i);
+        questionHash |= 0;
+      }
+      
+      const seedStr = this.createEnhancedSeed(
+        userInfo.userId,
+        dateString,
+        userInfo.clanId,
+        `${userInfo.channelId}_ask_${questionHash}`
+      );
+      
+      // Get seeded card (deterministic)
+      const cards = await this.tarotApiService.getRandomCards(1, seedStr);
       if (cards.length === 0) {
         await message.reply(SmartMessage.text('⚠️ Không thể lấy bài Tarot. Vui lòng thử lại sau.'));
         return;
       }
 
       const card = cards[0];
-      const isReversed = Math.random() < 0.4;
+      
+      // Deterministic reversed check (40% chance)
+      const rng = this.createRNG(seedStr + '_reverse');
+      const isReversed = rng() < 0.4;
       
       const meta = this.getCardMetadata(card.name_short, card.type);
       let answer = meta.yesNo;
@@ -296,8 +381,8 @@ export class TarotHandler {
       const emoji = answer === 'Có' ? '✅' : (answer === 'Không' ? '❌' : '🤔');
 
       await message.reply(
-          SmartMessage.text(`🗣️ **Hỏi:** ${question}\\n👉 **Trả lời:** ${emoji} **${answer.toUpperCase()}**`)
-            .addEmbed(this.createCardEmbed(card, isReversed, '', true))
+          SmartMessage.text(`🗣️ **Hỏi:** ${question}\n👉 **Trả lời:** ${emoji} **${answer.toUpperCase()}**`)
+            .addEmbed(this.createCardEmbed(card, isReversed, '', true, userInfo.avatar))
         );
     } catch (error) {
       this.logger.error('Error in handleAsk', error);
@@ -323,6 +408,8 @@ export class TarotHandler {
      const y = parseInt(parts[3], 10);
 
      try {
+       const userInfo = this.extractUserInfo(message);
+       
        let sum = d + m + y;
        
        const reduce = (n: number) => n.toString().split('').reduce((a,b) => a + parseInt(b), 0);
@@ -351,8 +438,8 @@ export class TarotHandler {
        }
 
        await message.reply(
-           SmartMessage.text(`🧩 **Lá Bài Linh Hồn của bạn (${dateInput}):**\\nCon số Tarot: **${displayNum}**`)
-           .addEmbed(this.createCardEmbed(card, false, 'Soul Card:', true))
+           SmartMessage.text(`🧩 **Lá Bài Linh Hồn của bạn (${dateInput}):**\nCon số Tarot: **${displayNum}**`)
+           .addEmbed(this.createCardEmbed(card, false, 'Soul Card:', true, userInfo.avatar))
        );
      } catch (error) {
        this.logger.error('Error in handleSoulCard', error);
