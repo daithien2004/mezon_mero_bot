@@ -414,13 +414,3 @@ private createRNG(seedStr: string) {
   };
 }
 ```
-
----
-
-## 📄 License
-
-[Your License Here]
-
-## 👥 Contributors
-
-[Your Contributors Here]
