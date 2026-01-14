@@ -8,6 +8,7 @@ import { HoroscopeHandler } from './handlers/horoscope.handler';
 import { UtilityHandler } from './handlers/utility.handler';
 import { HelpHandler } from './handlers/help.handler';
 import { TarotApiService } from './services/tarot-api.service';
+import { HealthController } from './health.controller';
 
 @Module({
   imports: [
@@ -19,7 +20,7 @@ import { TarotApiService } from './services/tarot-api.service';
       botId: process.env.MEZON_BOT_ID ?? '',
     }),
   ],
-  controllers: [],
+  controllers: [HealthController],
   providers: [
     TarotApiService,
     PingHandler,
