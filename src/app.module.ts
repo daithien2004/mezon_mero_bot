@@ -8,12 +8,15 @@ import { HoroscopeHandler } from './handlers/horoscope.handler';
 import { UtilityHandler } from './handlers/utility.handler';
 import { HelpHandler } from './handlers/help.handler';
 import { TarotApiService } from './services/tarot-api.service';
+import { HeartbeatService } from './services/heartbeat.service';
+import { ConnectionMonitorService } from './services/connection-monitor.service';
 import { HealthController } from './health.controller';
 
 @Module({
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
+      envFilePath: ['.env', '.env.local'],
     }),
     NezonModule.forRoot({
       token: process.env.MEZON_TOKEN ?? '',
@@ -25,7 +28,11 @@ import { HealthController } from './health.controller';
   ],
   controllers: [HealthController],
   providers: [
+    // Services
     TarotApiService,
+    HeartbeatService,
+    ConnectionMonitorService,
+    // Handlers
     PingHandler,
     TarotHandler,
     NumerologyHandler,
@@ -34,4 +41,4 @@ import { HealthController } from './health.controller';
     HelpHandler,
   ],
 })
-export class AppModule {}
+export class AppModule { }

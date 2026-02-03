@@ -9,8 +9,12 @@ Bot này cung cấp các tính năng:
 - **Tử Vi**: 12 cung hoàng đạo với 144+ lời khuyên cá nhân hóa
 - **Thần Số Học**: 12 con số chủ đạo với phân tích career, love, compatibility
 - **Tiện Ích**: QR code generator, ping test
+- **🫀 Heartbeat**: Tự động duy trì kết nối, không bao giờ timeout
 
 **Prefix:** `*` hoặc `/`
+
+> 💡 **Bot luôn online 24/7** nhờ hệ thống heartbeat và connection monitoring tự động!
+
 
 ---
 
