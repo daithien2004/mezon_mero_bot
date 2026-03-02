@@ -1,5 +1,4 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
-import { Nezon } from '@n0xgg04/nezon';
 
 /**
  * Connection Monitor Service
@@ -14,7 +13,7 @@ export class ConnectionMonitorService implements OnModuleInit {
     private connectionLostCount = 0;
     private lastConnectionCheck: Date = new Date();
 
-    constructor(private readonly nezon?: any) { }
+    constructor() { }
 
     onModuleInit() {
         this.logger.log('🔌 Connection Monitor initialized');
