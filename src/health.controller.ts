@@ -25,13 +25,8 @@ export class HealthController {
       },
       connection: {
         healthy: connectionStats.isHealthy,
-        connected: connectionStats.isConnected,
         lastCheck: connectionStats.lastCheck,
-        lastKeepalive: connectionStats.lastKeepalive,
         failureCount: connectionStats.failureCount,
-        reconnectCount: connectionStats.reconnectCount,
-        lastDisconnect: connectionStats.lastDisconnect,
-        lastReconnect: connectionStats.lastReconnect,
       },
       memory: {
         heapUsed: Math.round(heartbeatStats.memoryUsage.heapUsed / 1024 / 1024) + 'MB',
